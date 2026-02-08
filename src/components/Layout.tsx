@@ -1,18 +1,17 @@
 import { ReactNode } from 'react';
+import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Users, Wallet, ArrowRightLeft } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
-  currentPage: string;
-  onNavigate: (page: string) => void;
 }
 
-export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
+export function Layout({ children }: LayoutProps) {
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'partners', label: 'Business Partners', icon: Users },
-    { id: 'accounts', label: 'Accounts', icon: Wallet },
-    { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
+    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/partners', label: 'Business Partners', icon: Users },
+    { path: '/accounts', label: 'Accounts', icon: Wallet },
+    { path: '/transactions', label: 'Transactions', icon: ArrowRightLeft },
   ];
 
   return (
@@ -27,20 +26,21 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
             <div className="flex gap-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = currentPage === item.id;
                 return (
-                  <button
-                    key={item.id}
-                    onClick={() => onNavigate(item.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                    }`}
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) =>
+                      `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      }`
+                    }
                   >
                     <Icon className="w-4 h-4" />
                     {item.label}
-                  </button>
+                  </NavLink>
                 );
               })}
             </div>
