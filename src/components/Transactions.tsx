@@ -1,16 +1,21 @@
 import { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
-import { Transaction, Account, TransactionTypeEnum } from '../types';
-import { Plus, RefreshCw, ArrowRightLeft, TrendingUp, TrendingDown, Repeat, X, CheckCircle, Clock } from 'lucide-react';
+import { Transaction, Account, TransactionTypeEnum, BusinessPartner, CurrencyEnum } from '../types';
+import { Plus, RefreshCw, ArrowRightLeft, TrendingUp, TrendingDown, Repeat, X, CheckCircle, Clock, Loader2 } from 'lucide-react';
+import { Toast } from './Toast';
 
 type TransactionFormType = 'payin' | 'payout' | 'exchange';
 
 export function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [partners, setPartners] = useState<BusinessPartner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [executing, setExecuting] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [formType, setFormType] = useState<TransactionFormType>('payin');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [formData, setFormData] = useState({
     amount: '',
     name: '',
@@ -18,21 +23,28 @@ export function Transactions() {
     country: 'CH',
     iban: '',
     account: '',
-    fromAccount: '',
-    toAccount: '',
+    businessPartnerId: '',
+    fromCurrency: CurrencyEnum.CHF,
+    toCurrency: CurrencyEnum.EUR,
   });
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [transactionsData, accountsData] = await Promise.all([
+      const [transactionsData, accountsData, partnersData] = await Promise.all([
         apiService.getTransactions(),
         apiService.getAccounts(),
+        apiService.getBusinessPartners(),
       ]);
       setTransactions(transactionsData);
       setAccounts(accountsData);
+      setPartners(partnersData);
     } catch (error) {
       console.error('Error loading data:', error);
+      setToast({
+        message: 'Failed to load transactions. Please try again.',
+        type: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -44,14 +56,18 @@ export function Transactions() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
       if (formType === 'exchange') {
         await apiService.createExchange({
-          fromAccount: formData.fromAccount,
-          toAccount: formData.toAccount,
+          fromCurrency: formData.fromCurrency,
+          toCurrency: formData.toCurrency,
           amount: formData.amount,
-          name: formData.name,
-          date: formData.date,
+          businessPartnerId: parseInt(formData.businessPartnerId),
+        });
+        setToast({
+          message: 'Currency exchange completed successfully!',
+          type: 'success',
         });
       } else {
         const data = {
@@ -64,8 +80,16 @@ export function Transactions() {
         };
         if (formType === 'payin') {
           await apiService.createPayin(data);
+          setToast({
+            message: 'Pay in transaction created successfully!',
+            type: 'success',
+          });
         } else {
           await apiService.createPayout(data);
+          setToast({
+            message: 'Pay out transaction created successfully!',
+            type: 'success',
+          });
         }
       }
       setShowModal(false);
@@ -73,15 +97,32 @@ export function Transactions() {
       loadData();
     } catch (error) {
       console.error('Error creating transaction:', error);
+      setToast({
+        message: 'Failed to create transaction. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleExecutePayout = async (id: number) => {
+    setExecuting(id);
     try {
       await apiService.executePayout(id);
+      setToast({
+        message: 'Payout executed successfully!',
+        type: 'success',
+      });
       loadData();
     } catch (error) {
       console.error('Error executing payout:', error);
+      setToast({
+        message: 'Failed to execute payout. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setExecuting(null);
     }
   };
 
@@ -93,8 +134,9 @@ export function Transactions() {
       country: 'CH',
       iban: '',
       account: '',
-      fromAccount: '',
-      toAccount: '',
+      businessPartnerId: '',
+      fromCurrency: CurrencyEnum.CHF,
+      toCurrency: CurrencyEnum.EUR,
     });
   };
 
@@ -142,7 +184,15 @@ export function Transactions() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+      <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Transactions</h1>
@@ -268,9 +318,13 @@ export function Transactions() {
                       {!transaction.executed && transaction.type === TransactionTypeEnum.PAYOUT && (
                         <button
                           onClick={() => handleExecutePayout(transaction.id)}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                          disabled={executing === transaction.id}
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Execute
+                          {executing === transaction.id && (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          )}
+                          {executing === transaction.id ? 'Executing...' : 'Execute'}
                         </button>
                       )}
                     </td>
@@ -289,7 +343,7 @@ export function Transactions() {
               <h2 className="text-xl font-semibold text-slate-900">
                 {formType === 'payin' && 'Create Pay In'}
                 {formType === 'payout' && 'Create Pay Out'}
-                {formType === 'exchange' && 'Create Exchange'}
+                {formType === 'exchange' && 'Currency Exchange'}
               </h2>
               <button
                 onClick={() => setShowModal(false)}
@@ -303,40 +357,97 @@ export function Transactions() {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      From Account
+                      Business Partner
                     </label>
                     <select
                       required
-                      value={formData.fromAccount}
-                      onChange={(e) => setFormData({ ...formData, fromAccount: e.target.value })}
+                      value={formData.businessPartnerId}
+                      onChange={(e) => setFormData({ ...formData, businessPartnerId: e.target.value })}
                       className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      <option value="">Select account</option>
-                      {accounts.map((account) => (
-                        <option key={account.id} value={`/api/accounts/${account.id}`}>
-                          Account #{account.id} ({account.currency} - {account.balance})
+                      <option value="">Select business partner</option>
+                      {partners.map((partner) => (
+                        <option key={partner.id} value={partner.id}>
+                          {partner.name}
                         </option>
                       ))}
                     </select>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        From Currency
+                      </label>
+                      <select
+                        required
+                        value={formData.fromCurrency}
+                        onChange={(e) => setFormData({ ...formData, fromCurrency: e.target.value as CurrencyEnum })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value={CurrencyEnum.CHF}>CHF</option>
+                        <option value={CurrencyEnum.EUR}>EUR</option>
+                        <option value={CurrencyEnum.USD}>USD</option>
+                        <option value={CurrencyEnum.GBP}>GBP</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        To Currency
+                      </label>
+                      <select
+                        required
+                        value={formData.toCurrency}
+                        onChange={(e) => setFormData({ ...formData, toCurrency: e.target.value as CurrencyEnum })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value={CurrencyEnum.CHF}>CHF</option>
+                        <option value={CurrencyEnum.EUR}>EUR</option>
+                        <option value={CurrencyEnum.USD}>USD</option>
+                        <option value={CurrencyEnum.GBP}>GBP</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      To Account
+                      Amount to Sell
                     </label>
-                    <select
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
                       required
-                      value={formData.toAccount}
-                      onChange={(e) => setFormData({ ...formData, toAccount: e.target.value })}
+                      value={formData.amount}
+                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                       className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Select account</option>
-                      {accounts.map((account) => (
-                        <option key={account.id} value={`/api/accounts/${account.id}`}>
-                          Account #{account.id} ({account.currency} - {account.balance})
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+                    <p className="text-sm text-orange-600 font-medium">
+                      The exchange rate is fixed at 1.1
+                    </p>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        You will receive (approx.)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={(parseFloat(formData.amount || '0') * 1.1).toFixed(2)}
+                          className="flex-1 px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-semibold"
+                        />
+                        <span className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg min-w-[60px] text-center">
+                          {formData.toCurrency}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">Rate: 1.1</p>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -394,62 +505,68 @@ export function Transactions() {
                 </>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Transaction description"
-                />
-              </div>
+              {formType !== 'exchange' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Transaction description"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Amount
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="1"
-                    required
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="0.00"
-                  />
-                </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Amount
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        required
+                        value={formData.amount}
+                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="0.00"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Date
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Date
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className={`flex-1 px-4 py-2.5 text-white rounded-lg transition-colors font-medium ${
+                  disabled={submitting}
+                  className={`flex-1 px-4 py-2.5 text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
                     formType === 'payin'
                       ? 'bg-green-600 hover:bg-green-700'
                       : formType === 'payout'
@@ -457,13 +574,15 @@ export function Transactions() {
                       : 'bg-blue-600 hover:bg-blue-700'
                   }`}
                 >
-                  Create Transaction
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {submitting ? 'Creating...' : 'Create Transaction'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

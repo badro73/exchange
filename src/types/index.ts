@@ -82,9 +82,8 @@ export interface CreateTransactionInput {
 }
 
 export interface ExchangeInput {
-  fromAccount: string;
-  toAccount: string;
+  fromCurrency: CurrencyEnum;
+  toCurrency: CurrencyEnum;
   amount: string;
-  name: string;
-  date: string;
+  businessPartnerId: number;
 }
