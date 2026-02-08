@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import { Transaction, Account, TransactionTypeEnum, BusinessPartner, CurrencyEnum } from '../types';
-import { Plus, RefreshCw, ArrowRightLeft, TrendingUp, TrendingDown, Repeat, X, CheckCircle, Clock, Loader2 } from 'lucide-react';
+import { RefreshCw, ArrowRightLeft, TrendingUp, TrendingDown, Repeat, X, CheckCircle, Clock, Loader2 } from 'lucide-react';
 import { Toast } from './Toast';
 
 type TransactionFormType = 'payin' | 'payout' | 'exchange';
@@ -14,8 +14,17 @@ export function Transactions() {
   const [submitting, setSubmitting] = useState(false);
   const [executing, setExecuting] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [formType, setFormType] = useState<TransactionFormType>('payin');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [filters, setFilters] = useState({
+    accountId: '',
+    currency: '',
+    type: '',
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [formData, setFormData] = useState({
     amount: '',
     name: '',
@@ -146,6 +155,79 @@ export function Transactions() {
     setShowModal(true);
   };
 
+  const openEditModal = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setFormData({
+      amount: transaction.amount,
+      name: transaction.name,
+      date: transaction.date,
+      country: transaction.country || 'CH',
+      iban: transaction.iban,
+      account: typeof transaction.account === 'object' && 'id' in transaction.account
+        ? `/api/accounts/${transaction.account.id}`
+        : '',
+      businessPartnerId: '',
+      fromCurrency: CurrencyEnum.CHF,
+      toCurrency: CurrencyEnum.EUR,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTransaction) return;
+
+    setSubmitting(true);
+    try {
+      const data = {
+        amount: formData.amount,
+        name: formData.name,
+        date: formData.date,
+        country: formData.country,
+        iban: formData.iban,
+        account: formData.account,
+      };
+
+      await apiService.updateTransaction(editingTransaction.id, data);
+      setShowEditModal(false);
+      setEditingTransaction(null);
+      resetForm();
+      setToast({
+        message: 'Transaction updated successfully!',
+        type: 'success',
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      setToast({
+        message: 'Failed to update transaction. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredTransactions = transactions.filter((transaction) => {
+    if (filters.accountId && typeof transaction.account === 'object' && 'id' in transaction.account) {
+      if (transaction.account.id.toString() !== filters.accountId) return false;
+    }
+    if (filters.currency && typeof transaction.account === 'object' && 'currency' in transaction.account) {
+      if (transaction.account.currency !== filters.currency) return false;
+    }
+    if (filters.type && transaction.type !== filters.type) return false;
+    return true;
+  });
+
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedTransactions = filteredTransactions.slice(startIndex, startIndex + itemsPerPage);
+
+  const resetFilters = () => {
+    setFilters({ accountId: '', currency: '', type: '' });
+    setCurrentPage(1);
+  };
+
   const getTypeIcon = (type: TransactionTypeEnum) => {
     switch (type) {
       case TransactionTypeEnum.PAYIN:
@@ -223,6 +305,73 @@ export function Transactions() {
         </div>
       </div>
 
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Filter by Account</label>
+            <select
+              value={filters.accountId}
+              onChange={(e) => {
+                setFilters({ ...filters, accountId: e.target.value });
+                setCurrentPage(1);
+              }}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            >
+              <option value="">All Accounts</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                   {account.businessPartner.name } - #{account.id} - {account.currency}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Filter by Currency</label>
+            <select
+              value={filters.currency}
+              onChange={(e) => {
+                setFilters({ ...filters, currency: e.target.value });
+                setCurrentPage(1);
+              }}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            >
+              <option value="">All Currencies</option>
+              <option value={CurrencyEnum.CHF}>CHF</option>
+              <option value={CurrencyEnum.EUR}>EUR</option>
+              <option value={CurrencyEnum.USD}>USD</option>
+              <option value={CurrencyEnum.GBP}>GBP</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Filter by Type</label>
+            <select
+              value={filters.type}
+              onChange={(e) => {
+                setFilters({ ...filters, type: e.target.value });
+                setCurrentPage(1);
+              }}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            >
+              <option value="">All Types</option>
+              <option value="payin">Pay In</option>
+              <option value="payout">Pay Out</option>
+              <option value="exchange">Exchange</option>
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <button
+              onClick={resetFilters}
+              className="w-full px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+            >
+              Reset Filters
+            </button>
+          </div>
+        </div>
+      </div>
+
       {transactions.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <ArrowRightLeft className="w-12 h-12 text-slate-300 mx-auto mb-4" />
@@ -275,7 +424,7 @@ export function Transactions() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {transactions.map((transaction) => (
+                {paginatedTransactions.map((transaction) => (
                   <tr key={transaction.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${getTypeBg(transaction.type)}`}>
@@ -315,24 +464,72 @@ export function Transactions() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {!transaction.executed && transaction.type === TransactionTypeEnum.PAYOUT && (
-                        <button
-                          onClick={() => handleExecutePayout(transaction.id)}
-                          disabled={executing === transaction.id}
-                          className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {executing === transaction.id && (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          )}
-                          {executing === transaction.id ? 'Executing...' : 'Execute'}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {!transaction.executed && (
+                          <button
+                            onClick={() => openEditModal(transaction)}
+                            className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {!transaction.executed && transaction.type === TransactionTypeEnum.PAYOUT && (
+                          <button
+                            onClick={() => handleExecutePayout(transaction.id)}
+                            disabled={executing === transaction.id}
+                            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {executing === transaction.id && (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            )}
+                            {executing === transaction.id ? 'Executing...' : 'Execute'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+            <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+              <div className="text-sm text-slate-600">
+                Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredTransactions.length)} of {filteredTransactions.length} transactions
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        currentPage === page
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -576,6 +773,144 @@ export function Transactions() {
                 >
                   {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                   {submitting ? 'Creating...' : 'Create Transaction'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && editingTransaction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-lg w-full">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">Edit Transaction</h2>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingTransaction(null);
+                }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Account
+                </label>
+                <select
+                  required
+                  value={formData.account}
+                  onChange={(e) => setFormData({ ...formData, account: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select account</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={`/api/accounts/${account.id}`}>
+                      Account #{account.id} ({account.currency} - {account.balance})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Country
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={2}
+                    value={formData.country}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value.toUpperCase() })}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="CH"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    IBAN
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={34}
+                    value={formData.iban}
+                    onChange={(e) => setFormData({ ...formData, iban: e.target.value.toUpperCase() })}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="CH93 0076 2011 6238 5295 7"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Transaction description"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    required
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingTransaction(null);
+                  }}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {submitting ? 'Updating...' : 'Update Transaction'}
                 </button>
               </div>
             </form>

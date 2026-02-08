@@ -51,6 +51,16 @@ class ApiService {
     });
   }
 
+  async updateBusinessPartner(id: number, data: Partial<CreateBusinessPartnerInput>): Promise<BusinessPartner> {
+    return this.request<BusinessPartner>(`/api/business_partners/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/merge-patch+json',
+      },
+      body: JSON.stringify(data),
+    });
+  }
+
   // Accounts
   async getAccounts(): Promise<Account[]> {
     const response = await this.request<ApiResponse<Account>>('/api/accounts');
@@ -64,6 +74,16 @@ class ApiService {
   async createAccount(data: CreateAccountInput): Promise<Account> {
     return this.request<Account>('/api/accounts', {
       method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateAccount(id: number, data: Partial<CreateAccountInput>): Promise<Account> {
+    return this.request<Account>(`/api/accounts/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/merge-patch+json',
+      },
       body: JSON.stringify(data),
     });
   }
@@ -103,6 +123,16 @@ class ApiService {
     return this.request<Transaction>(`/api/transactions/${id}/payout/execute`, {
       method: 'PATCH',
       body: JSON.stringify({}),
+    });
+  }
+
+  async updateTransaction(id: number, data: Partial<CreateTransactionInput>): Promise<Transaction> {
+    return this.request<Transaction>(`/api/transactions/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/merge-patch+json',
+      },
+      body: JSON.stringify(data),
     });
   }
 }

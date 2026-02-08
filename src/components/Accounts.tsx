@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import { Account, BusinessPartner, CurrencyEnum } from '../types';
-import { Plus, RefreshCw, Wallet, X, ChevronDown, Loader2 } from 'lucide-react';
+import { Plus, RefreshCw, Wallet, X, ChevronDown, Loader2, Edit } from 'lucide-react';
 import { Toast } from './Toast';
 
 export function Accounts() {
@@ -10,6 +10,8 @@ export function Accounts() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [expandedAccount, setExpandedAccount] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [formData, setFormData] = useState({
@@ -62,6 +64,48 @@ export function Accounts() {
       console.error('Error creating account:', error);
       setToast({
         message: 'Failed to create account. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openEditModal = (account: Account) => {
+    setEditingAccount(account);
+    setFormData({
+      currency: account.currency,
+      balance: account.balance,
+      businessPartner: typeof account.businessPartner === 'object' && 'id' in account.businessPartner
+        ? `/api/business_partners/${account.businessPartner.id}`
+        : '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAccount) return;
+
+    setSubmitting(true);
+    try {
+      await apiService.updateAccount(editingAccount.id, formData);
+      setShowEditModal(false);
+      setEditingAccount(null);
+      setFormData({
+        currency: CurrencyEnum.CHF,
+        balance: '0',
+        businessPartner: '',
+      });
+      setToast({
+        message: 'Account updated successfully!',
+        type: 'success',
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error updating account:', error);
+      setToast({
+        message: 'Failed to update account. Please try again.',
         type: 'error',
       });
     } finally {
@@ -144,12 +188,12 @@ export function Accounts() {
               key={account.id}
               className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow"
             >
-              <div
-                className="p-6 cursor-pointer"
-                onClick={() => setExpandedAccount(expandedAccount === account.id ? null : account.id)}
-              >
+              <div className="p-6">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+                  <div
+                    className="flex items-center gap-4 cursor-pointer flex-1"
+                    onClick={() => setExpandedAccount(expandedAccount === account.id ? null : account.id)}
+                  >
                     <div className="p-3 bg-emerald-50 rounded-lg">
                       <Wallet className="w-6 h-6 text-emerald-600" />
                     </div>
@@ -160,18 +204,32 @@ export function Accounts() {
                       <p className="text-sm text-slate-600">{getPartnerName(account)}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditModal(account);
+                      }}
+                      className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    >
+                      <Edit className="w-5 h-5" />
+                    </button>
                     <div className="text-right">
                       <div className="text-2xl font-bold text-slate-900">
                         {parseFloat(account.balance).toFixed(2)}
                       </div>
                       <div className="text-sm text-slate-600">{getCurrencySymbol(account.currency)}</div>
                     </div>
-                    <ChevronDown
-                      className={`w-5 h-5 text-slate-400 transition-transform ${
-                        expandedAccount === account.id ? 'rotate-180' : ''
-                      }`}
-                    />
+                    <button
+                      onClick={() => setExpandedAccount(expandedAccount === account.id ? null : account.id)}
+                      className="p-2"
+                    >
+                      <ChevronDown
+                        className={`w-5 h-5 text-slate-400 transition-transform ${
+                          expandedAccount === account.id ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -298,6 +356,99 @@ export function Accounts() {
                 >
                   {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                   {submitting ? 'Creating...' : 'Create Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && editingAccount && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-lg w-full">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">Edit Account</h2>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingAccount(null);
+                }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Business Partner
+                </label>
+                <select
+                  required
+                  value={formData.businessPartner}
+                  onChange={(e) => setFormData({ ...formData, businessPartner: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select a partner</option>
+                  {partners.map((partner) => (
+                    <option key={partner.id} value={`/api/business_partners/${partner.id}`}>
+                      {partner.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Currency
+                </label>
+                <select
+                  value={formData.currency}
+                  onChange={(e) => setFormData({ ...formData, currency: e.target.value as CurrencyEnum })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value={CurrencyEnum.CHF}>CHF - Swiss Franc</option>
+                  <option value={CurrencyEnum.EUR}>EUR - Euro</option>
+                  <option value={CurrencyEnum.USD}>USD - US Dollar</option>
+                  <option value={CurrencyEnum.GBP}>GBP - British Pound</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Balance
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  value={formData.balance}
+                  onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingAccount(null);
+                  }}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {submitting ? 'Updating...' : 'Update Account'}
                 </button>
               </div>
             </form>
