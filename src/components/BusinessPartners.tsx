@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import { BusinessPartner, BusinessPartnerStatusEnum, LegalFormEnum } from '../types';
-import { Plus, RefreshCw, Building2, MapPin, X } from 'lucide-react';
+import { Plus, RefreshCw, Building2, MapPin, X, Loader2 } from 'lucide-react';
+import { Toast } from './Toast';
 
 export function BusinessPartners() {
   const [partners, setPartners] = useState<BusinessPartner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     status: BusinessPartnerStatusEnum.ACTIVE,
@@ -24,6 +27,10 @@ export function BusinessPartners() {
       setPartners(data);
     } catch (error) {
       console.error('Error loading partners:', error);
+      setToast({
+        message: 'Failed to load business partners. Please try again.',
+        type: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -35,6 +42,7 @@ export function BusinessPartners() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
       await apiService.createBusinessPartner(formData);
       setShowModal(false);
@@ -47,9 +55,19 @@ export function BusinessPartners() {
         zip: '',
         country: 'CH',
       });
+      setToast({
+        message: 'Business partner created successfully!',
+        type: 'success',
+      });
       loadPartners();
     } catch (error) {
       console.error('Error creating partner:', error);
+      setToast({
+        message: 'Failed to create business partner. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -75,7 +93,15 @@ export function BusinessPartners() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+      <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Business Partners</h1>
@@ -265,21 +291,25 @@ export function BusinessPartners() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Create Partner
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {submitting ? 'Creating...' : 'Create Partner'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

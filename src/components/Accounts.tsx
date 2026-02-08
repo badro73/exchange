@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import { Account, BusinessPartner, CurrencyEnum } from '../types';
-import { Plus, RefreshCw, Wallet, X, ChevronDown } from 'lucide-react';
+import { Plus, RefreshCw, Wallet, X, ChevronDown, Loader2 } from 'lucide-react';
+import { Toast } from './Toast';
 
 export function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [partners, setPartners] = useState<BusinessPartner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [expandedAccount, setExpandedAccount] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [formData, setFormData] = useState({
     currency: CurrencyEnum.CHF,
     balance: '0',
@@ -26,6 +29,10 @@ export function Accounts() {
       setPartners(partnersData);
     } catch (error) {
       console.error('Error loading data:', error);
+      setToast({
+        message: 'Failed to load accounts. Please try again.',
+        type: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -37,6 +44,7 @@ export function Accounts() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
       await apiService.createAccount(formData);
       setShowModal(false);
@@ -45,9 +53,19 @@ export function Accounts() {
         balance: '0',
         businessPartner: '',
       });
+      setToast({
+        message: 'Account created successfully!',
+        type: 'success',
+      });
       loadData();
     } catch (error) {
       console.error('Error creating account:', error);
+      setToast({
+        message: 'Failed to create account. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -83,7 +101,15 @@ export function Accounts() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+      <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Accounts</h1>
@@ -260,21 +286,25 @@ export function Accounts() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Create Account
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {submitting ? 'Creating...' : 'Create Account'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
