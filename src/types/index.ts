@@ -40,7 +40,7 @@ export interface Account {
   id: number;
   currency: CurrencyEnum;
   balance: string;
-  businessPartner: BusinessPartner | { id: number };
+  businessPartner: BusinessPartner | { id: number, name: string };
   transactions?: Transaction[];
 }
 
